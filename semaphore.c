@@ -7,40 +7,34 @@
 #include <sys/shm.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <string.h>
+#include <sys/stat.h>
+
 
 int main()
 {
     int i;
-    key_t shm_key;
-    int shm_id;
-    int *shrd_value;
     pid_t pid;
     int fork_count;
-    sem_t *sem;
-    unsigned int sem_value;
-    shm_key = ftok("/dev/null", 65);
-    shm_id = shmget(shm_key, sizeof(int), 0644 | IPC_CREAT);
-    if (shm_id < 0)
-    {
-        perror("shmgget");
-        exit(EXIT_FAILURE);
-    }
-    shrd_value = shmat(shm_id, NULL, 0);
-    *shrd_value = 0;
-    puts("How many fork do you want?");
-    scanf("%d", &fork_count);
-    puts("Enter semaphore value");
-    scanf("%u", &sem_value);
-    sem = sem_open("semaphore", O_CREAT | O_EXCL, 0644, sem_value);
+    int jugadores[4];
+    int jugadorActual=0;
 
+    int fd1; 
+    char *myfifo = "/tmp/myfifo4";
+    mkfifo(myfifo, 0666);
+
+
+
+    puts("Cuantos jugadores quiere?");
+    scanf("%d", &fork_count);
+  
+    
     for (i = 0; i < fork_count; i++)
     {
         pid = fork();
         if (pid < 0)
         {
             perror("fork");
-            sem_unlink("semaphore");
-            sem_close(sem);
             exit(EXIT_FAILURE);
         }
         else if (pid == 0)
@@ -50,14 +44,51 @@ int main()
     }
     if (pid == 0)
     {
-        //child process
-        sem_wait(sem);
+
+        int pidjugador;
+        int pidaux;
+
+        char aux[1024] = "\n";
+        char xt[3] = "";
+        char yt[3] = "";
+
+
+        int max = 1024;
+        char str1[max], str2[max];
+
+        while (1)
+        {
+            fd1 = open(myfifo, O_RDONLY);
+            pidaux = 0;
+            if(pidjugador == 0){ //ENTREAR SOLO LA PRIMERA VEZ
+                read(fd1, str1, max);
+                pidjugador = atoi(str1); 
+                printf("Soy el hijo con id: %d y me fue asignado el jugador: %d\n",getpid(),pidjugador);
+                close(fd1);
+            }else{
+                read(fd1, str1, max);
+                //hacemos la coma
+                pidaux=atoi(str1);
+                if(pidjugador==pidaux)
+                {
+                    printf("Soy el hijo con id: %d y se me esta siendo comparado con %d\n",getpid(),pidjugador);
+                }else{
+                    printf("Soy el hijo con id: %d y no me corresponde el jugador %d\n",getpid(),pidaux);
+                }
+                close(fd1);
+            }
+
+            //respuesta test
+            fd1 = open(myfifo, O_WRONLY);
+
+            write(fd1, "Ciclo completado",16);
+            close(fd1);
+
+            sleep(1);
+
+        }
+
         printf("Soy el hijo %d\n",i);
-        //sleep(1);
-        *shrd_value += i * 1;
-        //printf("Child - %d: new value of shrd_value = %d\n", i, *shrd_value);
-        sem_post(sem); //release
-        
         exit(EXIT_SUCCESS);
     }
     else if (pid > 0)
@@ -71,10 +102,7 @@ int main()
             }
         }
         printf("Terminaron todos mis hijos\n");
-        shmdt(shrd_value);
-        shmctl(shm_id, IPC_RMID, 0);
-        sem_unlink("semaphore"); // removes named semaphore
-        sem_close(sem);          // frees resources
+
         exit(0);
     }
 }
