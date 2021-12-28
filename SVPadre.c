@@ -66,6 +66,7 @@ int main()
     char str1[max], str2[max];
     
     hijo = fork();
+   
 
     if(hijo == 0)
     {
