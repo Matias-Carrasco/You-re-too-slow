@@ -31,10 +31,13 @@
 int jugadores;
 int tamanomatrix;
 int numerosrandom;
+int buffsize = 100000;
+//int turno = 0;
 
 void juego();
 void iniciar();
 void matriz(int real[tamanomatrix][tamanomatrix]);
+bool validarcoord(int auxX,int auxY,int oculta[tamanomatrix][tamanomatrix]);
 
 int main()
 {
@@ -44,10 +47,11 @@ int main()
 void iniciar()
 {
 
-    printf("Bienvenido a You’re too slow!\n");
+    printf("Bienvenido a You re too slow!\n");
 
     printf("Selecione el numero de jugadores: ");
-    scanf("%d", &jugadores);
+    //scanf("%d", &jugadores);
+    jugadores=1;
 
     switch (jugadores)
     {
@@ -98,8 +102,16 @@ void juego()
     sem[1] = sem_open("pSem1", O_CREAT | O_EXCL, 0644, 0);
     sem_unlink ("pSem0");
     sem_unlink ("pSem1");
-
+    
+    //matriz oculta
     int (*oculta)[tamanomatrix] = (int(*)[tamanomatrix]) mmap(NULL, sizeof(int)*tamanomatrix*tamanomatrix, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    for(i=0 ; i<tamanomatrix ; i++){
+        for(j=0 ; j<tamanomatrix ; j++){
+            oculta[i][j] = 0;
+            //printf("[%d]",oculta[i][j]);
+        }
+        //printf("\n");
+    }
 
     int pipes[jugadores * 2][2];
     int *childread;
@@ -111,7 +123,7 @@ void juego()
     {
         pipe(pipes[i]);
     }
-
+    
     //fork
     for (i = 0; i < jugadores; i++)
     {
@@ -140,7 +152,7 @@ void juego()
     //Logica de los pipes
     if (hijo == 0)
     {
-        //select
+        //Codigo del hijo
         FD_ZERO(&readfds);
         FD_SET(*dadread, &readfds);
         int sret;
@@ -148,31 +160,90 @@ void juego()
 
 
         sem_wait(sem[0]);
-        char mensaje[1024];
+        char mensaje[10];
+        
         int puntajeacumulado=0;
         int puntajeagregado;
         ssize_t result;
+        close(*childread);
+        close(*dadwrite);
         while(1){
-            close(*childread);
-            printf("Ingrese unas coordenadas: \n");
-            scanf("%s",mensaje);
             
 
             
-            sem_wait(sem[1]);
-            write(*childwrite, mensaje, sizeof(mensaje));
-            sem_post(sem[1]);
-            
-            
 
 
+
+           
+
+            //desmenusa las cordenadas en enteros (sin modificar el mensaje)
+            //verificar que sean correctas (si la matriz es de 4,4 que sean valores entre 0,3) y (que La coordenada ya este siendo utilizada)
+            //le manda al padre las cordenadas si son corrertas si no manda un mensaje de error de vuelta al jugador.
+            bool valid=false;
+            int auxX,auxY;
+            char xt[3];
+            char yt[3];
+            bool formato;
             
-            close(*dadwrite);
+            int cont,posidecoma;
+
+            do{
+                cont = 0;
+                posidecoma = 0;
+
+            
+                printf("Proceso hijo: Ingrese unas coordenadas: \n");
+                  
+                scanf("%s",mensaje);
+
+                for (i = 0; i < strlen(mensaje); i++)
+                {
+                    if ((mensaje[i]) == ',')
+                    {
+                        posidecoma = i;
+                        break;
+                    }
+                }
+
+                for (i = 0; i < posidecoma; i++)
+                {
+                    xt[i] = mensaje[i];
+                }
+
+                for (i = posidecoma + 1; strlen(mensaje) - 1; i++)
+                {
+
+                    if (mensaje[i] == 10)
+                    {
+                        break;
+                    }
+                    yt[cont] = mensaje[i];
+                    cont++;
+                }
+        
+                auxX = atoi(xt);
+                auxY = atoi(yt);
+     
+
+                if(validarcoord(auxX,auxY, oculta)==true){ 
+                    
+                    printf("Proceso hijo:  Las coordenadas [%d,%d] son validas, Enviando.....\n",auxX,auxY);
+                    write(*childwrite, &auxX, sizeof(int)); 
+                    write(*childwrite, &auxY, sizeof(int)); 
+                    valid=true;
+                }else{
+                    //mandar mensaje de error al jugador y volver a preguntar por coords
+                    printf("Proceso hijo: ERROR[1523] Las coordenadas [%d,%d] NO son validas\n",auxX,auxY);
+                }
+
+            }while(valid==false);
+            
+           
             result = read(*dadread, &puntajeagregado, sizeof(int));
            
 
             puntajeacumulado+=puntajeagregado;
-            fflush(stdin);
+      
             printf("Proceso hijo: Puntaje actual: %d\n",puntajeacumulado);
 
             if(puntajeacumulado >= 20){
@@ -186,7 +257,9 @@ void juego()
     }
     else if (hijo > 0)
     {
-        char mensaje[1024];
+        //Codigo del padre
+        int auxX,auxY;
+        int numero;
         int puntaje;
         int puntajeacumulado;
         ssize_t result;
@@ -200,31 +273,44 @@ void juego()
         
 
         sem_post(sem[0]);
+        close(pipes[2 * i][1]);
+        close(pipes[(2 * i) + 1][0]);
         while(1){
+
+            auxX = -1;
+            auxY = -1;
+            
+            
+
             for (i = 0; i < jugadores; i++)
             {
-                close(pipes[2 * i][1]);
-                fflush(stdin);
-                sem_post(sem[1]);
-                read(pipes[2 * i][0], mensaje, sizeof(mensaje));
-                sem_wait(sem[1]);
-                printf("Proceso padre: recivi las coordenadas: %s\n",mensaje);
                 
-                puntaje = rand()%16;
-                puntajeacumulado +=puntaje;
-                fflush(stdin);
-                close(pipes[(2 * i) + 1][0]);
-                
-                result = write(pipes[(2 * i) + 1][1], &puntaje, sizeof(int));
+                read(pipes[2 * i][0], &numero, sizeof(int));
+                auxX=numero;
+                read(pipes[2 * i][0], &numero, sizeof(int));
+                auxY=numero;
+                //manda el valor de la matriz real al hijo y modifica
             
+                
+                printf("Proceso padre: recivi las coordenadas: [%d,%d]\n",auxX,auxY);
+
+
+                oculta[auxX][auxY]=1;
+                puntaje = real[auxX][auxY];
+            
+
+                result = write(pipes[(2 * i) + 1][1], &puntaje, sizeof(int));
+
                
             }
             if(puntajeacumulado >= 20){
                 wait(NULL);
                 break;
             }
-            fflush(stdin);
+          
         }
+
+     
 
         printf("Proceso padre: He finalizado\n");
     }
@@ -341,3 +427,21 @@ void matriz(int real[tamanomatrix][tamanomatrix])
    
 }
 
+//Retorna true cuando las coordenadas son validas y false cuando las coordenadas son invalidas
+bool validarcoord(int auxX,int auxY,int oculta[tamanomatrix][tamanomatrix]){
+        printf("Validacion de coords\n");
+        printf("X: %d, Y: %d\n",auxX,auxY);
+   
+    //Comprobar si la coordenada esta ya en la matriz oculta
+    if(oculta[auxX][auxY] == 1) return false;
+    
+
+    //Comprobacion de los limites
+    if (auxX > tamanomatrix - 1 || auxY > tamanomatrix - 1 || auxX < 0 || auxY < 0)
+    {
+        return false;
+    }
+
+
+    return true;
+}

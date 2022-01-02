@@ -45,7 +45,7 @@ int main()
     //Variables 
     int fd1;               //File Descriptor
     int i, j, k;           //iteradores
-    int tamanoMatrix = 12; //Tamaño de la matrix (deveria ser variable)
+    int tamanoMatrix = 12; //Tamaño de la matrix 
     pid_t hijo; 
 
 
@@ -59,7 +59,7 @@ int main()
 
     }
 
-    char *myfifo = "/tmp/myfifo4";
+    char *myfifo = "/tmp/slow";
 
     mkfifo(myfifo, 0666);
 
@@ -126,11 +126,6 @@ int main()
             auxX = atoi(xt);
             auxY = atoi(yt);
 
-            if(auxX==12){
-
-                printf("Soy el hijo pidid: %d y me llego la cordenada(%d,%d)",getpid(),auxX,auxY);
-                exit(0);
-            }
 
            
 
