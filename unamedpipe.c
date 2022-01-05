@@ -93,9 +93,12 @@ void juego()
     pid_t hijo;
     sem_t *sem[2];
 
-    struct timeval tv;
-    fd_set readfds;
+    //para el fifo
+    char *myfifo = "/tmp/fifo";
+    mkfifo(myfifo, 0666);
+    int fd; //filedescriptor del fifo
 
+            
     
 
     sem[0] = sem_open("pSem0", O_CREAT | O_EXCL, 0644, 0);
@@ -147,20 +150,14 @@ void juego()
         }
     }
 
-     tv.tv_sec = 0,1;
-     tv.tv_usec = 0;
     //Logica de los pipes
     if (hijo == 0)
     {
         //Codigo del hijo
-        FD_ZERO(&readfds);
-        FD_SET(*dadread, &readfds);
-        int sret;
-
-
-
+ 
         sem_wait(sem[0]);
         char mensaje[10];
+        char respuesta[1024];
         
         int puntajeacumulado=0;
         int puntajeagregado;
@@ -185,16 +182,18 @@ void juego()
             char yt[3];
             bool formato;
             
+            
             int cont,posidecoma;
 
             do{
                 cont = 0;
                 posidecoma = 0;
+                puts("Esperando coordenadas: ");
+                fd = open(myfifo, O_RDONLY);
+                read(fd, mensaje, 10);
+                close(fd);
 
-            
-                printf("Proceso hijo: Ingrese unas coordenadas: \n");
-                  
-                scanf("%s",mensaje);
+                fd = open(myfifo, O_WRONLY);
 
                 for (i = 0; i < strlen(mensaje); i++)
                 {
@@ -226,14 +225,18 @@ void juego()
      
 
                 if(validarcoord(auxX,auxY, oculta)==true){ 
-                    
+                    //pasar al padre
                     printf("Proceso hijo:  Las coordenadas [%d,%d] son validas, Enviando.....\n",auxX,auxY);
                     write(*childwrite, &auxX, sizeof(int)); 
                     write(*childwrite, &auxY, sizeof(int)); 
                     valid=true;
                 }else{
                     //mandar mensaje de error al jugador y volver a preguntar por coords
+                    char error[10] = "error";
                     printf("Proceso hijo: ERROR[1523] Las coordenadas [%d,%d] NO son validas\n",auxX,auxY);
+                    write(fd, error, 10);
+                    close(fd);
+
                 }
 
             }while(valid==false);
@@ -243,12 +246,40 @@ void juego()
            
 
             puntajeacumulado+=puntajeagregado;
-      
+            
             printf("Proceso hijo: Puntaje actual: %d\n",puntajeacumulado);
+
+            for (i = 0; i < tamanomatrix; i++)
+            {
+                for (j = 0; j < tamanomatrix; j++)
+                {
+
+                    if (oculta[i][j]==1)
+                    {
+                        strcat(respuesta, "[X] ");
+                    }
+                    else
+                    {
+                        strcat(respuesta, "[O] ");
+                    }
+                }
+                strcat(respuesta, "\n");
+            }
+            strcat(respuesta, "\n");
+
+            strcat(respuesta, "Puntaje actual: ");
+            char punt[4];
+            sprintf(punt, "%d", puntajeacumulado);
+            strcat(respuesta, punt);
+
+            write(fd, respuesta, 1024);
+            close(fd);
+
+            explicit_bzero(respuesta, 1024);
 
             if(puntajeacumulado >= 20){
                 printf("Felicidades haz ganado! puntaje total %d\n",puntajeacumulado);
-                exit(1);
+                exit(0);
             }
         }
         
@@ -290,14 +321,19 @@ void juego()
                 read(pipes[2 * i][0], &numero, sizeof(int));
                 auxY=numero;
                 //manda el valor de la matriz real al hijo y modifica
+
+
             
                 
                 printf("Proceso padre: recivi las coordenadas: [%d,%d]\n",auxX,auxY);
 
 
                 oculta[auxX][auxY]=1;
-                puntaje = real[auxX][auxY];
             
+
+                puntaje = real[auxX][auxY];
+                puntajeacumulado += puntaje;
+                
 
                 result = write(pipes[(2 * i) + 1][1], &puntaje, sizeof(int));
 
@@ -305,6 +341,7 @@ void juego()
             }
             if(puntajeacumulado >= 20){
                 wait(NULL);
+                exit(0);
                 break;
             }
           
