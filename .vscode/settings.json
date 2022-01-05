@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "type_traits": "c",
-        "fcntl.h": "c"
+        "fcntl.h": "c",
+        "sem.h": "c",
+        "semaphore.h": "c"
     }
 }
