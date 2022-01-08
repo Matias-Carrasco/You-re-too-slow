@@ -94,7 +94,7 @@ void juego()
     sem_t *sem[2];
 
     //para el fifo
-    char *myfifo = "/tmp/fifo";
+    char *myfifo = "/tmp/fifo2";
     mkfifo(myfifo, 0666);
     int fd; //filedescriptor del fifo
 
@@ -277,10 +277,7 @@ void juego()
 
             explicit_bzero(respuesta, 1024);
 
-            if(puntajeacumulado >= 20){
-                printf("Felicidades haz ganado! puntaje total %d\n",puntajeacumulado);
-                exit(0);
-            }
+            
         }
         
 

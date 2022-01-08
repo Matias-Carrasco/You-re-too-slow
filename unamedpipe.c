@@ -6,11 +6,6 @@
 #include <stdbool.h>
 #include <time.h>
 
-
-
-
-
-
 //Rrrores
 #include <fcntl.h>
 #include <errno.h>
@@ -62,6 +57,7 @@ int main()
     iniciar();
 }
 
+
 void iniciar()
 {
 
@@ -69,7 +65,7 @@ void iniciar()
 
     printf("Selecione el numero de jugadores: ");
     //scanf("%d", &jugadores);
-    jugadores=2;
+    jugadores=1;
 
     switch (jugadores)
     {
@@ -113,7 +109,7 @@ void juego()
 
     //semaforos
     int sems;
-    int semsorden[jugadores+1];
+
     sems = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
     if(sems < 0) { // Si no se pudo crear el arreglo, retorna un valor negativo
         perror("semget"); exit(1);
@@ -123,21 +119,6 @@ void juego()
         perror("semctl"); exit(1); // Si falla, retorna un valor negativo.
     }
 
-    for(int i = 0 ; i < jugadores+1 ; i++)
-    {
-        semsorden[i] = semget(IPC_PRIVATE, 1, 0666 | IPC_CREAT);
-        if(semsorden[i] < 0) { // Si no se pudo crear el arreglo, retorna un valor negativo
-            perror("semget"); exit(1);
-        }
-    }
-
-    for(int i = 0 ; i < jugadores+1 ; i++)
-    {
-        if(semctl(semsorden[i], 0, SETVAL, 1) < 0) { // semctl inicializa un semaforo, para un arreglo de semaforos (semid), en su posición 0, se va a inicializar
-										  // el valor del contador (SETVAL) el valor 1.
-            perror("semctl"); exit(1); // Si falla, retorna un valor negativo.
-        }
-    }
 
     //para el fifo
     char *myfifo = "/tmp/fifo";
@@ -185,19 +166,34 @@ void juego()
         else if (hijo == 0)
         {
             pid_hijos[i] = hijo;
-
+            puts("Esperando a que ingrese un jugador");
             sleep(1);
             if(semop(sems, &p, 1) < 0) { // Espera
                 perror("semop p"); exit(1);
             }
-
-            char mensaje[20]; 
+            //recivir el pid del hijo
+            char msj[20];
             fd = open(myfifo, O_RDONLY);
-            read(fd, mensaje, 20);
-            close(fd);
-            printf("[Hijo %d] a ingresado el jugador con pid: %s \n",i,mensaje);
+            fsync(fd);
+            read(fd,msj,20);
             
-            pidjug[i]=atoi(mensaje);
+            
+            close(fd);
+            int pidj = atoi(msj);
+            pidjug[i]=pidj;
+
+            //mandar el pid del padre
+            fd = open(myfifo, O_WRONLY);    
+            char res[20];
+            int pid = getpid();
+            sprintf(res,"%d",getppid()); 
+            write(fd,res,20);
+            fsync(fd);
+            close(fd);
+
+            printf("[Hijo %d] a ingresado el jugador %d\n",i,pidj);
+            char resp[1024];
+         
 
             childread = &pipes[2 * i][0];
             childwrite = &pipes[2 * i][1];
@@ -215,78 +211,24 @@ void juego()
         }
     }
 
-    for(int i = 0 ; i < jugadores+1; i++)
-    {
-        pid_hijos[i] = fork();
-        if(pid_hijos[i] > 0)
-        {
-            continue;
-        }else
-        {
-            pid_hijos[i] = getpid();
-            if(semop(semsorden[i], &p, 1) < 0) { // semop realiza una operación sobre un arreglo de semaforos. Recibe la id del arreglo de semaforos,
-									  // el puntero de la operación (en este caso, p, sem_wait()) y la dimensión del arreglo. Se ocupa el recurso.
-			    perror("semop p"); exit(1);
-		    }
-            break;
-        }
-    }
- 
-
     //Logica de los pipes
-    sleep(1);
-     if(hijo == pid_hijos[0])
-    {
-        printf("Soy P0 Y esp\n");
-        semop(semsorden[1], &p, 1);
-        semop(semsorden[1], &v, 1);
-        printf("Soy P0 Podos los otros procesos fueron liberados\n");
-        semop(semsorden[0], &v, 1); //libero mi propio proceso
-        
-    }else if(hijo == pid_hijos[1])
-    {
-        printf("Soy P1 Podos los otros procesos fueron liberados\n");   
-        semop(semsorden[1], &v, 1);  //libero mi propip proceso
-              
-       
-    }else{
-
-        semop(semsorden[1], &p, 1); 
-        semop(semsorden[1], &v, 1); 
-
-        semop(semsorden[0], &p, 1); 
-        semop(semsorden[0], &v, 1); 
-
-
-        printf("Soy El padre y Los otros procesos fueron liberados\n");
-        semop(semsorden[3], &v, 1); 
-
-    }
-
 
         if (hijo == 0 )
         {
             //Codigo del hijo
             sleep(1);
     
-            
-            char mensaje[10];
-            char respuesta[1024];
-            
+          
             int puntajeacumulado=0;
             int puntajeagregado;
-            ssize_t result;
+            
             close(*childread);
             close(*dadwrite);
             while(1){
-                
 
-                
-
-
-
+                char mensaje[10];
+                char respuesta[1024];
             
-
                 //desmenusa las cordenadas en enteros (sin modificar el mensaje)
                 //verificar que sean correctas (si la matriz es de 4,4 que sean valores entre 0,3) y (que La coordenada ya este siendo utilizada)
                 //le manda al padre las cordenadas si son corrertas si no manda un mensaje de error de vuelta al jugador.
@@ -295,8 +237,8 @@ void juego()
                 char xt[3];
                 char yt[3];
                 bool formato;
-                int pidguardado;
-                int pidaux;
+            
+                
                 char conexion[]="Ganaste el turno";
                 char conexionfail[]="Turno perdido";
                 int cont,posidecoma;
@@ -305,23 +247,19 @@ void juego()
                     cont = 0;
                     posidecoma = 0;
                     puts("Esperando coordenadas: ");
-                    fd = open(myfifo, O_RDONLY);
 
-                    if(pidguardado==0){
-                    read(fd, mensaje, 10);
-                    int pidguardado=atoi(mensaje);
-                    write(fd, conexion, 20);
-                    }
-                    
-                    read(fd, mensaje, 10);
-                    int pidaux=atoi(mensaje);
-                    if(pidguardado==pidaux){
-                    write(fd, conexionfail, 20);    
-                    }
+                    fd = open(myfifo, O_RDONLY);
+                    read(fd, mensaje, 1024);
+                    fsync(fd);
                     close(fd);
 
-                    fd = open(myfifo, O_WRONLY);
+                    if(strcmp(mensaje,"MG")==0){
+                        puts("Juego terminado!\n");
+                        exit(0);
+                    }
 
+
+                    fd = open(myfifo, O_WRONLY);
                     for (i = 0; i < strlen(mensaje); i++)
                     {
                         if ((mensaje[i]) == ',')
@@ -354,14 +292,20 @@ void juego()
                     if(validarcoord(auxX,auxY, oculta)==true){ 
                         //pasar al padre
                         printf("Proceso hijo:  Las coordenadas [%d,%d] son validas, Enviando.....\n",auxX,auxY);
+                        ssize_t result;
                         write(*childwrite, &auxX, sizeof(int)); 
+                        
+                        
                         write(*childwrite, &auxY, sizeof(int)); 
+                        
+
                         valid=true;
                     }else{
                         //mandar mensaje de error al jugador y volver a preguntar por coords
                         char error[10] = "error";
                         printf("Proceso hijo: ERROR[1523] Las coordenadas [%d,%d] NO son validas\n",auxX,auxY);
                         write(fd, error, 10);
+                        fsync(fd);
                         close(fd);
 
                     }
@@ -369,13 +313,14 @@ void juego()
                 }while(valid==false);
                 
             
-                result = read(*dadread, &puntajeagregado, sizeof(int));
+                read(*dadread, &puntajeagregado, sizeof(int));
             
 
                 puntajeacumulado+=puntajeagregado;
                 
                 printf("Proceso hijo: Puntaje actual: %d\n",puntajeacumulado);
-
+                explicit_bzero(respuesta, 1024);
+                int con=0;
                 for (i = 0; i < tamanomatrix; i++)
                 {
                     for (j = 0; j < tamanomatrix; j++)
@@ -383,6 +328,7 @@ void juego()
 
                         if (oculta[i][j]==1)
                         {
+                            con++;
                             strcat(respuesta, "[X] ");
                         }
                         else
@@ -393,25 +339,29 @@ void juego()
                     strcat(respuesta, "\n");
                 }
                 strcat(respuesta, "\n");
-
-                strcat(respuesta, "Puntaje actual: ");
                 char punt[4];
                 sprintf(punt, "%d", puntajeacumulado);
+                if(con==(tamanomatrix*tamanomatrix)){
+                    
+                    //el juego a terminado, no mas posiciones
+                    strcat(respuesta, "Juego Finalizado, Tu puntaje obtenido es:  ");
+                    strcat(respuesta, punt);
+                    strcat(respuesta, "\n");
+                    write(fd, respuesta, 1024);
+
+                    kill(pidjug[0],SIGKILL);
+                    exit(0);
+
+
+                }
+
+                strcat(respuesta, "Puntaje actual: ");
                 strcat(respuesta, punt);
 
                 write(fd, respuesta, 1024);
                 close(fd);
-                pidguardado=0;
 
-                explicit_bzero(respuesta, 1024);
-
-                if(puntajeacumulado >= 20){
-                    printf("Felicidades haz ganado! puntaje total %d\n",puntajeacumulado);
-                    exit(0);
-                }
             }
-            
-
 
         }
         else if (hijo > 0)
@@ -421,15 +371,11 @@ void juego()
         int numero;
         int puntaje;
         int puntajeacumulado;
-        ssize_t result;
+       
 
         int real[tamanomatrix][tamanomatrix];
 
         matriz(real);
-
-         
-
-        
 
         
         close(pipes[2 * i][1]);
@@ -443,11 +389,14 @@ void juego()
 
             for (i = 0; i < jugadores; i++)
             {
-                
+              
                 read(pipes[2 * i][0], &numero, sizeof(int));
                 auxX=numero;
+                
                 read(pipes[2 * i][0], &numero, sizeof(int));
                 auxY=numero;
+
+                
                 //manda el valor de la matriz real al hijo y modifica
 
 
@@ -463,7 +412,7 @@ void juego()
                 puntajeacumulado += puntaje;
                 
 
-                result = write(pipes[(2 * i) + 1][1], &puntaje, sizeof(int));
+                write(pipes[(2 * i) + 1][1], &puntaje, sizeof(int));
 
                
             }
